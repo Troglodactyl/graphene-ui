@@ -4,6 +4,7 @@ import Immutable from "immutable";
 import Highstock from "react-highcharts/highstock";
 import utils from "common/utils";
 import counterpart from "counterpart";
+import _ from "lodash";
 
 class DepthHighChart extends React.Component {
 
@@ -35,6 +36,46 @@ class DepthHighChart extends React.Component {
         let priceSymbol = `${baseSymbol}/${quoteSymbol}`;
 
         let totalAsks = 0;
+
+        let power = 1;
+
+        let flatBids = _.cloneDeep(flat_bids), flatAsks = _.cloneDeep(flat_asks), flatCalls = _.cloneDeep(flat_calls);
+
+        if (flat_bids.length) {
+            while ((flat_bids[flat_bids.length - 1][0] * power) < 1) {
+                power *= 10;
+            }
+        } else if (flat_asks.length) {
+            while ((flat_asks[0][0] * power) < 1) {
+                power *= 10;
+            }
+        } else if (flat_calls && flat_calls.length) {
+            while ((flat_calls[flat_calls.length - 1][0] * power) < 1) {
+                power *= 10;
+            }
+        }
+
+        power *= 10;
+
+        if (power !== 1) {
+            if (flatBids.length) {
+                flatBids.forEach(bid => {
+                    bid[0] *= power;
+                })
+            }
+
+            if (flatAsks.length) {
+                flatAsks.forEach(ask => {
+                    ask[0] *= power;
+                })
+            }
+
+            if (flatCalls && flatCalls.length) {
+                flatCalls.forEach(call => {
+                    call[0] *= power;
+                })
+            }
+        }
 
         let config = {
             chart: {
@@ -69,7 +110,7 @@ class DepthHighChart extends React.Component {
                 backgroundColor: "rgba(0, 0, 0, 0.3)",
                 formatter: function() {
                     let name = this.series.name.split(" ")[0];
-                    return `<span style="font-size: 90%;">${utils.format_number(this.x, quote.precision)} ${priceSymbol}</span><br/>
+                    return `<span style="font-size: 90%;">${utils.format_number(this.x / power, base.precision)} ${priceSymbol}</span><br/>
                         <span style="color:${this.series.color}">\u25CF</span>
                         ${name}: <b>${utils.format_number(this.y, base.precision)} ${quoteSymbol}</b>`;
                 },
@@ -98,7 +139,7 @@ class DepthHighChart extends React.Component {
                     style: {
                         color: "#FFFFFF"
                     },
-                    formatter: function () {return this.value; }
+                    formatter: function () {return this.value / power; }
                 },
                 ordinal: false,
                 lineColor: "#000000",
@@ -127,8 +168,8 @@ class DepthHighChart extends React.Component {
         }
 
         // Center the charts between bids and asks
-        if (flat_bids.length > 0 && flat_asks.length > 0) {
-            let middleValue = (flat_asks[0][0] + flat_bids[flat_bids.length - 1][0]) / 2;
+        if (flatBids.length > 0 && flatAsks.length > 0) {
+            let middleValue = (flatAsks[0][0] + flatBids[flatBids.length - 1][0]) / 2;
             config.xAxis.min = middleValue * 0.25;
             config.xAxis.max = middleValue * 1.75;
             if (spread > 0 && spread > middleValue) {
@@ -143,7 +184,7 @@ class DepthHighChart extends React.Component {
                 color: "red",
                 id: "plot_line",
                 dashStyle: "longdashdot",
-                value: this.props.plotLine,
+                value: this.props.plotLine * power,
                 width: 1,
                 zIndex: 5
             });
@@ -155,7 +196,7 @@ class DepthHighChart extends React.Component {
                 color: "#B6B6B6",
                 id: "plot_line",
                 dashStyle: "longdash",
-                value: this.props.LCP,
+                value: this.props.LCP * power,
                 label: {
                     text: counterpart.translate("explorer.block.call_limit"),
                     style: {
@@ -173,7 +214,7 @@ class DepthHighChart extends React.Component {
                 color: "#B6B6B6",
                 id: "plot_line",
                 dashStyle: "longdash",
-                value: this.props.SQP,
+                value: this.props.SQP * power,
                 label: {
                     text: counterpart.translate("exchange.squeeze"),
                     style: {
@@ -191,7 +232,7 @@ class DepthHighChart extends React.Component {
                 color: "#7B1616",
                 id: "plot_line",
                 dashStyle: "solid",
-                value: this.props.settlementPrice,
+                value: this.props.settlementPrice * power,
                 label: {
                     text: counterpart.translate("explorer.block.settlement_price"),
                     style: {
@@ -205,10 +246,10 @@ class DepthHighChart extends React.Component {
 
 
             // Add calls if present
-            if (flat_calls && flat_calls.length) {
+            if (flatCalls && flatCalls.length) {
                 config.series.push({
                     name: `Call ${quoteSymbol}`,
-                    data: this.props.flat_calls,
+                    data: flatCalls,
                     color: "#BBBF2B"
                 })
                 if (this.props.invertedCalls) {
@@ -220,18 +261,18 @@ class DepthHighChart extends React.Component {
         }
 
         // Push asks and bids
-        if (flat_bids && flat_bids.length) {
+        if (flatBids.length) {
             config.series.push({
                 name: `Bid ${quoteSymbol}`,
-                data: flat_bids,
+                data: flatBids,
                 color: "#50D2C2"
             })
         }
 
-        if (flat_asks && flat_asks.length) {
+        if (flatAsks.length) {
             config.series.push({
                 name: `Ask ${quoteSymbol}`,
-                data: flat_asks,
+                data: flatAsks,
                 color: "#E3745B"
             });
         }
@@ -243,7 +284,7 @@ class DepthHighChart extends React.Component {
             config.chart.height = this.state.offsetHeight;
         }
 
-        // Add onClick eventlistener if defined
+        // Add onClick event listener if defined
         if (this.props.onClick) {
             config.chart.events = {
                 click: this.props.onClick
@@ -251,10 +292,10 @@ class DepthHighChart extends React.Component {
         }
 
         return (
-            <div className="grid-content no-overflow">
+            <div className="grid-content no-overflow middle-content">
                 <p className="bid-total">{utils.format_number(totalBids, base.precision)} {baseSymbol}</p>
                 <p className="ask-total">{utils.format_number(totalAsks, quote.precision)} {quoteSymbol}</p>
-                {flat_bids || flat_asks || flat_calls ? <Highstock config={config}/> : null}
+                {flatBids || flatAsks || flatCalls ? <Highstock config={config}/> : null}
             </div>
         );
     }

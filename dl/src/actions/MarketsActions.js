@@ -32,7 +32,7 @@ let addSeconds = (expiration) => {
     }
 
     lastExpiration = expiration;
-    return newExpiration; 
+    return newExpiration;
 };
 
 class MarketsActions {
@@ -62,6 +62,9 @@ class MarketsActions {
             marketAsset = {id: base.get("id")};
         }
 
+        // 2hours, 4hours, 6hours 12hours
+        // 1w  |  3d  1d  | 4h 1h  |  30m  15m  5m 1m
+        // [60, 300, 900, 1800, 3600, 14400, 86400]
         let subscription = (subResult) => {
             // console.log("markets subscription result:", subResult);
             let callPromise = null,
@@ -93,8 +96,8 @@ class MarketsActions {
 
             let startDate = new Date();
             let endDate = new Date();
-            startDate.setDate(startDate.getDate() - 10);
-
+            startDate.setDate(startDate.getDate() - 300);
+            endDate.setDate(endDate.getDate() + 1);
             Promise.all([
                     Apis.instance().db_api().exec("get_limit_orders", [
                         base.get("id"), quote.get("id"), 100
@@ -137,7 +140,8 @@ class MarketsActions {
 
             let startDate = new Date();
             let endDate = new Date();
-            startDate.setDate(startDate.getDate() - 10);
+            startDate = new Date(startDate.getTime() - bucketSize * 500 * 1000);
+            endDate.setDate(endDate.getDate() + 1);
             return Promise.all([
                     Apis.instance().db_api().exec("subscribe_to_market", [
                         subscription, base.get("id"), quote.get("id")
@@ -149,7 +153,8 @@ class MarketsActions {
                     settlePromise,
                     Apis.instance().history_api().exec("get_market_history", [
                         base.get("id"), quote.get("id"), bucketSize, startDate.toISOString().slice(0, -5), endDate.toISOString().slice(0, -5)
-                    ])
+                    ]),
+                    Apis.instance().history_api().exec("get_market_history_buckets", [])
                 ])
                 .then((results) => {
                     // console.log("market subscription success:", results[0], results);
@@ -160,6 +165,7 @@ class MarketsActions {
                         calls: results[2],
                         settles: results[3],
                         price: results[4],
+                        buckets: results[5],
                         market: subID,
                         base: base,
                         quote: quote,
@@ -182,7 +188,7 @@ class MarketsActions {
                 .then((unSubResult) => {
                     this.dispatch({unSub: true});
                     delete subs[subID];
-                    
+
                 }).catch((error) => {
                     subs[subID] = true;
                     this.dispatch({unSub: false, market: subID});
